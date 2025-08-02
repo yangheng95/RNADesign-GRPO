@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>框架解析：OmniGenome-GRPO - 面向RNA设计的强化学习框架</title>
+<style>
+body {
+font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+line-height: 1.6;
+margin: 0;
+padding: 0;
+background-color: #f4f4f4;
+color: #333;
+}
+.container {
+width: 80%;
+margin: auto;
+overflow: hidden;
+padding: 20px 0;
+}
+header {
+background: #333;
+color: #fff;
+padding: 1rem 0;
+text-align: center;
+}
+header h1 {
+margin: 0;
+font-size: 2.5rem;
+}
+.main {
+background: #fff;
+padding: 20px;
+margin-top: 20px;
+border-radius: 8px;
+box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+h2 {
+color: #333;
+border-bottom: 2px solid #007BFF;
+padding-bottom: 10px;
+}
+h3 {
+color: #0056b3;
+}
+code {
+background: #eee;
+padding: 2px 5px;
+border-radius: 4px;
+font-family: "Courier New", Courier, monospace;
+}
+.mermaid {
+text-align: center;
+margin-bottom: 20px;
+}
+.highlight {
+font-weight: bold;
+color: #007BFF;
+}
+footer {
+text-align: center;
+margin-top: 20px;
+padding: 20px;
+background: #333;
+color: #fff;
+}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true});</script>
+</head>
+<body>
+
+<header>
+    <h1>框架解析：OmniGenome-GRPO</h1>
+    <p style="font-size: 1.2rem;">一个用于RNA序列设计的强化学习框架</p>
+</header>
+
+<div class="container">
+    <div class="main">
+        <h2>1. 概述：我们解决了什么问题？</h2>
+        <p>
+            RNA（核糖核酸）在生命活动中扮演着至关重要的角色，其功能很大程度上由其折叠形成的复杂三维结构决定。<strong>RNA序列设计</strong>（RNA Design）或<strong>反向折叠</strong>（Inverse Folding）是一个核心的生物工程问题：给定一个目标RNA二级结构（由括号和点组成的字符串，如 <code>((((....))))</code>），我们能否设计出一条核苷酸序列（由A, U, G, C组成），使其能够稳定地折叠成这个目标结构？
+        </p>
+        <p>
+            本框架 <span class="highlight">OmniGenome-GRPO</span> 提供了一个基于深度强化学习的全自动解决方案。它将该问题建模为一个序列决策过程，训练一个智能体（Agent）——<strong>一个序列到序列（Seq2Seq）模型</strong>——来逐步生成满足结构要求的RNA序列。
+        </p>
+
+        <h2>2. 核心工作流程：智能体如何学习？</h2>
+        <p>
+            整个框架遵循一个经典的强化学习闭环：<span class="highlight">智能体-环境交互</span>。如下图所示，这个循环是训练的核心。
+        </p>
+        <div class="mermaid">
+           graph TD
+                A["智能体（策略模型）OmniGenomeSeq2SeqPolicy"] -->|输出：Action（下一个核苷酸）和 Value（价值评估）| B["环境RNADesignEnvironment"]
+                B -->|返回：New State（更新后的序列状态）和 Reward（奖励信号）| A
+                A -->|收集轨迹（State, Action, Reward...）| C["训练器GRPOTrainer"]
+                C -->|使用 GRPO 算法更新模型参数| A
+
+                subgraph 奖励计算模块
+                    D["Reward Calculator"]
+                end
+
+                B -- "当序列生成结束时" --> D
+                D -- "计算最终奖励" --> B
+        </div>
+
+        <p><strong>流程详解:</strong></p>
+        <ol>
+            <li><strong>初始化</strong>: 给定一个目标结构，环境 (<code>RNADesignEnvironment</code>) 创建一个初始状态（State）。这个状态包含了目标结构信息和空的待填序列。</li>
+            <li><strong>决策</strong>: 智能体/策略模型 (<code>OmniGenomeSeq2SeqPolicy</code>) 接收当前状态，并预测下一个最应该放置的核苷酸（Action）。</li>
+            <li><strong>执行</strong>: 环境接收这个动作，将其添加到当前序列中，并生成一个新的状态。</li>
+            <li><strong>奖励</strong>:
+                <ul>
+                    <li>在序列生成过程中，可以给予基于当前序列前缀的<strong>步骤奖励（Shaping Reward）</strong>。</li>
+                    <li>当整个序列生成完毕后，环境会调用奖励计算器 (<code>RNARewardCalculator</code>) 来评估最终序列的质量，并给予一个<strong>终端奖励（Terminal Reward）</strong>。这个奖励是学习的主要驱动力。</li>
+                </ul>
+            </li>
+            <li><strong>学习与更新</strong>: 训练器 (<code>GRPOTrainer</code>) 收集智能体在环境中交互产生的大量“经验”（即状态、动作、奖励的轨迹）。当收集到足够数据后，它使用 <span class="highlight">GRPO (Group-relative Policy Optimization)</span> 算法来更新智能体的模型参数，使其在未来的决策中能获得更高的奖励。</li>
+            <li><strong>迭代</strong>: 以上过程不断重复，智能体的序列设计能力随之逐步提升。</li>
+        </ol>
+
+        <h2>3. 关键组件深度解析</h2>
+
+        <h3>3.1. 智能体/策略模型: <code>OmniGenomeSeq2SeqPolicy</code></h3>
+        <p>这是框架的“大脑”，其核心是一个带有<strong>价值头（Value Head）</strong>的<strong>Transformer Seq2Seq 模型</strong>。</p>
+        <ul>
+            <li><strong>文件</strong>: <code>omnigenome_model.py</code></li>
+            <li><strong>作用</strong>: 学习从一个“结构序列”到“核苷酸序列”的映射。
+                <ul>
+                    <li><strong>Encoder</strong>: 输入是目标结构序列（例如, <code>((..))</code>）。</li>
+                    <li><strong>Decoder</strong>: 逐步生成核苷酸序列（例如, <code>AUGCAU</code>）。</li>
+                </ul>
+            </li>
+            <li><strong>关键特征</strong>:
+                <ul>
+                    <li><span class="highlight">价值头 (<code>Value Head</code>)</span>: 除了预测下一个动作的概率，模型还并行地预测当前状态的“价值”（即从当前状态出发，预期未来能获得的总奖励）。这是PPO这类演员-评论家（Actor-Critic）算法的关键。</li>
+                    <li><span class="highlight">目标设定 (<code>set_target</code>)</span>: 在进行一系列序列生成前，可以通过此方法将目标结构“缓存”在模型中，供后续的 Encoder 使用，极大地提高了效率。</li>
+                    <li><span class="highlight">向量化输出 (<code>get_policy_output</code>)</span>: 该模型的核心方法经过了精心优化，可以接收一个批次（Batch）的状态，并高效地并行计算出所有状态对应的动作概率和价值，这是并行化 rollout 的基础。</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h3>3.2. 环境: <code>RNADesignEnvironment</code></h3>
+        <p>这是智能体交互的“世界”，模拟了RNA序列设计任务。</p>
+        <ul>
+            <li><strong>文件</strong>: <code>rna_environment.py</code></li>
+            <li><strong>作用</strong>: 管理序列设计的状态、执行智能体的动作、调用奖励函数并返回奖励。</li>
+            <li><strong>关键特征</strong>:
+                <ul>
+                    <li><span class="highlight">状态表示</span>: 状态是一个固定长度的向量，由 <code>[ 序列编码 | 结构编码 | 位置比例 ]</code> 拼接而成。这种设计巧妙地将动态增长的序列问题转化为了一个固定维度状态空间中的RL问题。</li>
+                    <li><span class="highlight">向量化</span>: 环境被设计为完全向量化的。通过 <code>reset(target, batch_size=...)</code>，它可以一次性为<strong>同一个目标结构</strong>初始化多个并行的“游戏”实例。<code>step(actions: List[int])</code> 方法也一次性处理一批动作，极大地加速了数据采集（Rollout）过程。</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h3>3.3. 训练算法: <code>GRPOTrainer</code></h3>
+        <p>这是驱动模型学习的“引擎”，实现了 GRPO 算法。GRPO 是 PPO (Proximal Policy Optimization) 的一种变体，特别适合于需要处理不同“任务组”（这里指不同的目标结构）的场景。</p>
+        <ul>
+            <li><strong>文件</strong>: <code>grpo_trainer.py</code></li>
+            <li><strong>作用</strong>: 收集经验并更新策略模型。</li>
+            <li><strong>关键特征</strong>:
+                <ul>
+                    <li><span class="highlight">并行数据收集 (<code>rollout_parallel</code>)</span>: 利用向量化的环境，为单个目标结构快速并行地收集一批经验轨迹。</li>
+                    <li><span class="highlight">分组收集 (<code>collect_by_group</code>)</span>: 组织对多个不同目标结构的并行数据收集。</li>
+                    <li><span class="highlight">向量化轨迹重计算 (<code>_recompute_traj_logp</code>)</span>: 在进行策略更新时，需要重新计算旧轨迹在新策略下的对数概率。此实现是完全向量化的，避免了Python循环，显著提升了训练速度。</li>
+                    <li><span class="highlight">内存管理与混合精度</span>: 代码中包含了显式的GPU缓存清理、垃圾回收，并通过 <code>GradScaler</code> 支持混合精度训练，表明框架在设计时就充分考虑了在有限GPU显存下高效训练大模型的现实需求。</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h3>3.4. 奖励系统: <code>RNARewardCalculator</code> & <code>LMScorer</code></h3>
+        <p>这是框架的“价值导向”，定义了什么样的RNA序列是“好”的。一个设计精良的奖励函数是RL成功的关键。</p>
+        <ul>
+            <li><strong>文件</strong>: <code>reward_calculator.py</code></li>
+            <li><strong>作用</strong>: 计算给定（序列，结构）对的奖励分数。</li>
+            <li><strong>关键特征</strong>:
+                <ul>
+                    <li><span class="highlight">结构相似性奖励</span>: 主要奖励来源。它首先使用一个轻量级的折叠工具（如 ViennaRNA）预测生成序列的结构，然后计算预测结构与目标结构之间的 <strong>F1 分数（<code>f1_pairs</code>）</strong>。F1分数越高，奖励越高。</li>
+                    <li><span class="highlight">语言模型一致性奖励 (<code>LMScorer</code>)</span>: 这是本框架一个非常<strong>高级和新颖</strong>的特性。它引入一个预训练的生物序列大语言模型（例如 <code>OmniGenome-186M</code>）来评估“生成的序列”与“目标/预测的结构”之间的语义一致性。这相当于引入了一个强大的先验知识，可以引导生成更“像真实RNA”的序列。<code>LMScorer</code> 能够自适应支持MLM、CausalLM和Seq2Seq等不同类型的预训练模型。</li>
+                    <li><span class="highlight">辅助奖励</span>: 还包括GC含量、序列多样性等多种可配置的辅助奖励项，用于更精细地调控生成结果。</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h2>4. 总结：框架的优势与特点</h2>
+        <ol>
+            <li><strong>端到端自动化</strong>: 将复杂的RNA设计问题转化为一个可自动优化的强化学习任务。</li>
+            <li><strong>高性能与高效率</strong>: 整个框架（环境、模型、训练器）都经过了深度的向量化和并行化设计，并集成了混合精度训练与显存管理策略，能够高效地利用硬件资源。</li>
+            <li><strong>先进的策略模型</strong>: 采用强大的 Transformer Seq2Seq 架构作为策略网络，使其具备强大的序列建模和生成能力。</li>
+            <li><strong>精巧的奖励设计</strong>: 创造性地结合了<strong>物理折叠的结构相似性</strong>和<strong>生物大语言模型的语义一致性</strong>，构建了一个信息丰富且有效的奖励函数。</li>
+            <li><strong>模块化与可扩展</strong>: 各个组件（模型、环境、奖励、训练器）职责分明，代码结构清晰，易于理解、修改和扩展。</li>
+        </ol>
+        <p>
+            综上所述，<span class="highlight">OmniGenome-GRPO</span> 是一个现代化、功能强大且设计周全的强化学习框架，为解决RNA序列设计问题提供了一个极具前景的解决方案。
+        </p>
+    </div>
+</div>
+
+<footer>
+    <p>GitHub</p>
+</footer>
+</body>
+</html>
+
